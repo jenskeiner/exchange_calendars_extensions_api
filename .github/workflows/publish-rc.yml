@@ -21,18 +21,18 @@ jobs:
     - uses: actions/checkout@v3
     - name: Install poetry.
       run: pipx install poetry
-    - name: Set up Python 3.10.
+    - name: Set up Python.
       uses: actions/setup-python@v4
       with:
         python-version: "3.11"
         cache: 'poetry'
-    - name: Determine RC version number.
+    - name: Determine version number.
       run: |
-        export RC_VERSION=$(echo ${{ github.ref_name }} | sed -e 's/^\(release\|hotfix\|support\)\///')rc${{ github.run_number }}
-        echo "RC version is $RC_VERSION."
-        echo "RC_VERSION=$RC_VERSION" >> $GITHUB_ENV
-    - name: Set poetry package version from tag.
-      run: poetry version ${{ env.RC_VERSION }}
+        export VERSION=$(echo ${{ github.ref_name }} | sed -e 's/^\(release\|hotfix\|support\)\///')rc${{ github.run_number }}
+        echo "RC version is $VERSION."
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+    - name: Set poetry package version.
+      run: poetry version ${{ env.VERSION }}
     - name: Determine path to version.py from module name.
       run: |
           export VERSION_PATH=$(echo ${{ env.MODULE_NAME }} | sed 's/\./\//g')/version.py
@@ -40,7 +40,7 @@ jobs:
           echo "VERSION_PATH=$VERSION_PATH" >> $GITHUB_ENV
     - name: Generate version.py
       run: |
-          echo "version = '${{ env.RC_VERSION }}'" > ${{ env.VERSION_PATH }}
+          echo "version = '${{ env.VERSION }}'" > ${{ env.VERSION_PATH }}
     - name: Generate requirements.txt.
       run: poetry export -f requirements.txt --without-hashes > requirements.txt
     - name: Build package with poetry.
@@ -53,8 +53,8 @@ jobs:
     - name: Install from testpypi and import.
       run: |
         i=0
-        while (($i<120)) && [[ ! $(curl --max-time 120 -s https://test.pypi.org/pypi/${{ env.PACKAGE_NAME }}/json | jq -r '.releases | keys[]') =~ (^|[[:space:]])${{ env.RC_VERSION }}($|[[:space:]]) ]];\
+        while (($i<120)) && [[ ! $(curl --max-time 120 -s https://test.pypi.org/pypi/${{ env.PACKAGE_NAME }}/json | jq -r '.releases | keys[]') =~ (^|[[:space:]])${{ env.VERSION }}($|[[:space:]]) ]];\
           do echo waiting for package to appear in test index, sleeping 5s; sleep 5s; let i++; done
-        pip install --no-cache-dir --index-url https://test.pypi.org/simple ${{ env.PACKAGE_NAME }}==${{ env.RC_VERSION }} --no-deps
+        pip install --no-cache-dir --index-url https://test.pypi.org/simple ${{ env.PACKAGE_NAME }}==${{ env.VERSION }} --no-deps
         pip install -r requirements.txt
         python -c 'import ${{ env.MODULE_NAME }};print(${{ env.MODULE_NAME }}.__version__)'
