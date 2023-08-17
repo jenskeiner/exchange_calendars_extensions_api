@@ -60,7 +60,7 @@ jobs:
                 exists=1
             else
                 ((i++))
-                echo "$i/$n Waiting for package to appear in test index, sleeping 5s.
+                echo "$i/$n Waiting for package to appear in test index, sleeping 5s."
                 sleep 5s
             fi
         done
