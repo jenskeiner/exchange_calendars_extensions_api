@@ -6,6 +6,7 @@ on:
 
 env:
   PACKAGE_NAME: exchange_calendars_extensions_api
+  MODULE_NAME: exchange_calendars_extensions.api
 
 jobs:
   build-and-publish:
@@ -40,7 +41,7 @@ jobs:
           do echo waiting for package to appear in test index, sleeping 5s; sleep 5s; let i++; done
         pip install --no-cache-dir --index-url https://test.pypi.org/simple ${{ env.PACKAGE_NAME }}==${{ github.ref_name }} --no-deps
         pip install -r requirements.txt
-        python -c 'import ${{ env.PACKAGE_NAME }};print(${{ env.PACKAGE_NAME }}.__version__)'
+        python -c 'import ${{ env.MODULE_NAME }};print(${{ env.MODULE_NAME }}.__version__)'
     - name: Clean pip
       run: |
         pip uninstall -y ${{ env.PACKAGE_NAME }}
@@ -56,4 +57,4 @@ jobs:
         while (($i<120)) && [[ ! $(curl --max-time 120 -s https://pypi.org/pypi/${{ env.PACKAGE_NAME }}/json | jq -r '.releases | keys[]') =~ (^|[[:space:]])${{ github.ref_name }}($|[[:space:]]) ]];\
           do echo waiting for package to appear in index, sleeping 5s; sleep 5s; let i++; done
         pip install --no-cache-dir --index-url https://pypi.org/simple ${{ env.PACKAGE_NAME }}==${{ github.ref_name }}
-        python -c 'import ${{ env.PACKAGE_NAME }};print(${{ env.PACKAGE_NAME }}.__version__)'
+        python -c 'import ${{ env.MODULE_NAME }};print(${{ env.MODULE_NAME }}.__version__)'
