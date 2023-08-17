@@ -33,6 +33,8 @@ jobs:
     - name: Generate version.py
       run: |
           echo "version = '${{ github.ref_name }}'" > ${{ env.VERSION_PATH }}
+          ls -la ${{ env.VERSION_PATH }}
+          cat ${{ env.VERSION_PATH }}
     - name: Generate requirements.txt.
       run: poetry export -f requirements.txt --without-hashes > requirements.txt
     - name: Build package with poetry.
