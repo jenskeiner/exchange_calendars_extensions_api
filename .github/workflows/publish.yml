@@ -5,12 +5,14 @@ on:
     types: [published]
 
 env:
-  PACKAGE_NAME: <package name>
+  PACKAGE_NAME: exchange_calendars_extensions_api
 
 jobs:
   build-and-publish:
     name: Build and publish Python distributions to TestPyPI and PyPI.
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
     steps:
     - uses: actions/checkout@v3
     - name: Install poetry.
@@ -29,8 +31,6 @@ jobs:
     - name: Publish package to Test PyPI.
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
-        user: __token__
-        password: ${{ secrets.TEST_PYPI_PASSWORD }}
         repository-url: https://test.pypi.org/legacy/
         skip-existing: true
     - name: Install from testpypi and import.
