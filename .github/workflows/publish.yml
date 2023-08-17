@@ -53,11 +53,11 @@ jobs:
         n=60
         exists=0
         while [ $i -lt $n ] && [ $exists -eq 0 ]; do
+            ((i++))
             if curl -s https://test.pypi.org/pypi/${{ env.PACKAGE_NAME }}/json | jq -e ".releases | has(\"${{ env.VERSION }}\")"; then
                 echo "$i/$n Package exists in index."
                 exists=1
             else
-                ((i++))
                 echo "$i/$n Package has not appeared in index yet. Sleeping 5s."
                 sleep 5s
             fi
@@ -78,11 +78,11 @@ jobs:
         n=60
         exists=0
         while [ $i -lt $n ] && [ $exists -eq 0 ]; do
+            ((i++))
             if curl -s https://pypi.org/pypi/${{ env.PACKAGE_NAME }}/json | jq -e ".releases | has(\"${{ env.VERSION }}\")"; then
                 echo "$i/$n Package exists in index."
                 exists=1
             else
-                ((i++))
                 echo "$i/$n Package has not appeared in index yet. Sleeping 5s."
                 sleep 5s
             fi
