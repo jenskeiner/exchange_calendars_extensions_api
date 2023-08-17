@@ -1,3 +1,5 @@
+__version__ = None
+
 try:
     from importlib.metadata import version
     # get version from installed package
