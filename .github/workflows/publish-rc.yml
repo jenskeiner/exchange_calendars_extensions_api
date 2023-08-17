@@ -33,6 +33,13 @@ jobs:
         echo "RC_VERSION=$RC_VERSION" >> $GITHUB_ENV
     - name: Set poetry package version from tag.
       run: poetry version ${{ env.RC_VERSION }}
+    - name: Determine path to version.py from module name.
+      run: |
+          export VERSION_PATH=$(echo ${{ env.MODULE_NAME }} | sed 's/\./\//g')/version.py
+          echo "VERSION_PATH=VERSION_PATH" >> $GITHUB_ENV
+    - name: Generate version.py
+      run: |
+          echo "version = '${{ env.RC_VERSION }}'" > ${{ env.VERSION_PATH }}
     - name: Generate requirements.txt.
       run: poetry export -f requirements.txt --without-hashes > requirements.txt
     - name: Build package with poetry.
