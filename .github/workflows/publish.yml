@@ -28,6 +28,7 @@ jobs:
     - name: Determine path to version.py from module name.
       run: |
           export VERSION_PATH=$(echo ${{ env.MODULE_NAME }} | sed 's/\./\//g')/version.py
+          echo "VERSION_PATH is $VERSION_PATH."
           echo "VERSION_PATH=VERSION_PATH" >> $GITHUB_ENV
     - name: Generate version.py
       run: |
