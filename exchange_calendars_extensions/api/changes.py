@@ -1,12 +1,12 @@
 import datetime as dt
 from enum import Enum, unique
 from functools import reduce
-from typing import Union, List, Tuple
+from typing import List, Tuple
 
 import pandas as pd
-from pydantic import BaseModel, Field, model_validator, validate_call
+from pydantic import BaseModel, Field, RootModel, model_validator, validate_call
 from pydantic.functional_validators import BeforeValidator
-from typing_extensions import Self, Annotated, Literal
+from typing_extensions import Literal, Union, Annotated, Dict, Any, Self
 
 
 @unique
@@ -27,7 +27,7 @@ class DayType(str, Enum):
     QUARTERLY_EXPIRY = 'quarterly_expiry'
 
 
-def _to_timestamp(value: Union[pd.Timestamp, str]) -> pd.Timestamp:
+def _to_timestamp(value: Any) -> pd.Timestamp:
     """
     Convert value to Pandas timestamp.
 
@@ -50,6 +50,7 @@ def _to_timestamp(value: Union[pd.Timestamp, str]) -> pd.Timestamp:
     if not isinstance(value, pd.Timestamp):
         try:
             # Convert value to timestamp.
+            # noinspection PyTypeChecker
             value = pd.Timestamp(value)
         except ValueError as e:
             # Failed to convert key to timestamp.
@@ -101,6 +102,7 @@ def _to_time(value: Union[dt.time, str]):
     if not isinstance(value, dt.time):
         for f in ('%H:%M', '%H:%M:%S'):
             try:
+                # noinspection PyTypeChecker
                 value = dt.datetime.strptime(value, f).time()
                 break
             except ValueError:
@@ -315,3 +317,7 @@ class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=Tru
             All days in the changeset.
         """
         return tuple(sorted(set(map(lambda x: x.date, self.add)).union(set(self.remove))))
+
+
+# A type alias for a dictionary of changesets, mapping exchange key to a corresponding change set.
+ChangeSetDict = RootModel[Dict[str, ChangeSet]]
