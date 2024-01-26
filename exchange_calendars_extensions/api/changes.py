@@ -320,4 +320,39 @@ class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=Tru
 
 
 # A type alias for a dictionary of changesets, mapping exchange key to a corresponding change set.
-ChangeSetDict = RootModel[Dict[str, ChangeSet]]
+class ChangeSetDict(RootModel):
+    root: Dict[str, ChangeSet]
+
+    # Delegate all dictionary-typical methods to the root dictionary.
+    def __getitem__(self, key):
+        return self.root[key]
+
+    def __setitem__(self, key, value):
+        self.root[key] = value
+
+    def __delitem__(self, key):
+        del self.root[key]
+
+    def __iter__(self):
+        return iter(self.root)
+
+    def __len__(self):
+        return len(self.root)
+
+    def __contains__(self, key):
+        return key in self.root
+
+    def keys(self):
+        return self.root.keys()
+
+    def values(self):
+        return self.root.values()
+
+    def items(self):
+        return self.root.items()
+
+    def get(self, key, default=None):
+        return self.root.get(key, default)
+
+    def pop(self, key, default=None):
+        return self.root.pop(key, default)
