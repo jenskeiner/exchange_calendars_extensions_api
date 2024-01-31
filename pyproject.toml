@@ -37,10 +37,10 @@ pandas = ">=1"
 [tool.poetry.group.dev.dependencies]
 pytest = ">=7.3.1,<7.5.0"
 pytest-cov = "~=4.1.0"
-pre-commit = "~=3.3.3"
+pre-commit = ">=3.3.3,<3.6.0"
 
 [tool.pytest.ini_options]
-addopts = "--cov=exchange_calendars_extensions --cov-report=term-missing"
+addopts = "--cov=exchange_calendars_extensions.api --cov-report=term-missing"
 
 [tool.ruff]
 # Enable pycodestyle (`E`) and Pyflakes (`F`) codes by default.
