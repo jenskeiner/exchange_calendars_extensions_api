@@ -1,12 +1,12 @@
 import datetime as dt
-from typing import Union, Collection
+from typing import Any, Union, Collection
 
 import pandas as pd
 import pytest
 from pydantic import ValidationError, Field, validate_call
 from typing_extensions import Annotated
 
-from exchange_calendars_extensions.api.changes import DayType, DayProps, DayPropsWithTime, ChangeSet, TimestampLike, \
+from exchange_calendars_extensions.api.changes import DayType, DayProps, DayPropsWithTime, ChangeSet, Tags, TimestampLike, \
     DayPropsLike
 
 
@@ -82,7 +82,7 @@ class TestChangeSet:
         # Check given day type.
         assert cs.remove == [to_timestamp(date)]
 
-    @pytest.mark.parametrize(["date", "tags"], [
+    @pytest.mark.parametrize(["date", "valid_tags"], [
         ("2020-01-01", None),
         (pd.Timestamp("2020-01-01"), None),
         (pd.Timestamp("2020-01-01").date(), None),
@@ -99,23 +99,55 @@ class TestChangeSet:
         (pd.Timestamp("2020-01-01"), ['foo', 'bar', 'foo']),
         (pd.Timestamp("2020-01-01").date(), ['foo', 'bar', 'foo']),
     ])
-    def test_set_tags(self, date: TimestampLike, tags: Union[Collection, None]):
+    def test_set_valid_tags(self, date: TimestampLike, valid_tags: Tags):
         cs = ChangeSet()
-        cs.set_tags(date, tags)
+        cs.set_tags(date, valid_tags)
 
         # Convert date to validated object, maybe.
         date = to_timestamp(date)
 
-        if tags is None or len(tags) == 0:
+        if valid_tags is None or len(valid_tags) == 0:
             # Empty set of tags.
             assert len(cs) == 0
             assert date not in cs.meta
         else:
             # Non-empty set of tags. Duplicates should be removed and the result should be sorted.
             assert len(cs) == 1
-            assert cs.meta[date].tags == sorted(set(tags))
+            assert cs.meta[date].tags == sorted(set(valid_tags))
             assert cs.meta[date].comment is None
 
+    @pytest.mark.parametrize(["invalid_tags"], [
+        (["foo", "bar", 1],),
+        (123.456,),
+        ({'foo': 'bar'},),])
+    @pytest.mark.parametrize(["date", "valid_tags"], [
+        ("2020-01-01", None),
+        (pd.Timestamp("2020-01-01"), None),
+        (pd.Timestamp("2020-01-01").date(), None),
+        ("2020-01-01", []),
+        (pd.Timestamp("2020-01-01"), []),
+        (pd.Timestamp("2020-01-01").date(), []),
+        ("2020-01-01", ['foo']),
+        (pd.Timestamp("2020-01-01"), ['foo']),
+        (pd.Timestamp("2020-01-01").date(), ('foo',)),
+        ("2020-01-01", {'foo', 'bar'}),
+        (pd.Timestamp("2020-01-01"), ['foo', 'bar']),
+        (pd.Timestamp("2020-01-01").date(), ['foo', 'bar']),
+        ("2020-01-01", ['foo', 'bar', 'foo']),
+        (pd.Timestamp("2020-01-01"), ['foo', 'bar', 'foo']),
+        (pd.Timestamp("2020-01-01").date(), ['foo', 'bar', 'foo']),
+    ])
+    def test_set_invalid_tags(self, date: TimestampLike, valid_tags: Tags, invalid_tags: Any):
+        # Fresh changeset.
+        cs = ChangeSet()
+        
+        # Set valid tags.
+        cs.set_tags(date, valid_tags)
+        
+        # Set invalid tags.
+        with pytest.raises(ValueError):
+            cs.set_tags(date, invalid_tags)
+            
     @pytest.mark.parametrize(["include_tags"], [(True,), (False,)], ids=['include_tags', 'exclude_meta'])
     @pytest.mark.parametrize(["date", "props"], [
         ('2020-01-01', {'type': 'holiday', 'name': 'Holiday'}),

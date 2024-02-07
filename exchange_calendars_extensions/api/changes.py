@@ -1,10 +1,11 @@
 import datetime as dt
 from collections import OrderedDict
 from enum import Enum, unique
-from typing import List, Tuple, Collection
+from typing import Concatenate, Iterable, List, Set, Tuple, Collection, ParamSpec
+import functools
 
 import pandas as pd
-from pydantic import BaseModel, Field, RootModel, model_validator, validate_call
+from pydantic import BaseModel, Field, InstanceOf, RootModel, model_validator, validate_call
 from pydantic.functional_validators import BeforeValidator
 from typing_extensions import Literal, Union, Annotated, Dict, Any, Self
 
@@ -142,7 +143,7 @@ class DayPropsWithTime(AbstractDayProps):
 # Type alias for valid day properties.
 DayPropsLike = Annotated[Union[DayProps, DayPropsWithTime], Field(discriminator='type')]
 
-Tags = Union[Collection[str], None]
+Tags = Union[List[str], Union[Tuple[str], Union[Set[str], None]]]
 
 
 class DateMeta(BaseModel, arbitrary_types_allowed=True, validate_assignment=True, extra='forbid'):
@@ -171,6 +172,30 @@ class DateMeta(BaseModel, arbitrary_types_allowed=True, validate_assignment=True
         return len(self.tags) + (1 if self.comment is not None else 0)
 
 
+P = ParamSpec('P')
+
+
+def _with_meta(f: Callable[Concatenate[Self, DateMeta, P], DateMeta]) -> Callable[Concatenate[Self, TimestampLike, P], Self]:
+    
+    @functools.wraps(f)
+    def wrapper(self, date: TimestampLike, *args: P.args, **kwargs: P.kwargs) -> Self:
+        # Retrieve meta for given day.
+        meta = self.meta.get(date, DateMeta())
+
+        # Call wrapped function with meta as first positional argument.
+        meta = f(self, meta, *args, **kwargs)
+        
+        # Update meta for date.
+        if len(meta) > 0:
+            self.meta[date] = meta
+        else:
+            self.meta.pop(date, None)
+
+        # Return self.
+        return self
+
+    return wrapper
+    
 class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=True, extra='forbid'):
     """
     Represents a modification to an existing exchange calendar.
@@ -331,25 +356,14 @@ class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=Tru
         # Get current meta for day.
         meta = self.meta.get(date, DateMeta())
 
-        try:
-            # Get current tags.
-            tags_prev = list(meta.tags)
+        # Set the tags.
+        meta.tags = tags
 
-            try:
-                # Set the tags.
-                meta.tags = tags
-            except Exception as e:
-                # Restore previous tags.
-                meta.tags = tags_prev
-
-                # Let exception bubble up.
-                raise e
-        finally:
-            # Update meta for date.
-            if len(meta) > 0:
-                self.meta[date] = meta
-            else:
-                self.meta.pop(date, None)
+        # Update meta for date.
+        if len(meta) > 0:
+            self.meta[date] = meta
+        else:
+            self.meta.pop(date, None)
 
         return self
 
