@@ -1,13 +1,13 @@
 import datetime as dt
+import functools
 from collections import OrderedDict
 from enum import Enum, unique
-from typing import Concatenate, Iterable, List, Set, Tuple, Collection, ParamSpec
-import functools
+from typing import Concatenate, List, Set, Tuple, ParamSpec
 
 import pandas as pd
-from pydantic import BaseModel, Field, InstanceOf, RootModel, model_validator, validate_call
+from pydantic import BaseModel, Field, RootModel, model_validator, validate_call
 from pydantic.functional_validators import BeforeValidator
-from typing_extensions import Literal, Union, Annotated, Dict, Any, Self
+from typing_extensions import Literal, Union, Annotated, Dict, Any, Self, Callable
 
 
 @unique
@@ -175,27 +175,6 @@ class DateMeta(BaseModel, arbitrary_types_allowed=True, validate_assignment=True
 P = ParamSpec('P')
 
 
-def _with_meta(f: Callable[Concatenate[Self, DateMeta, P], DateMeta]) -> Callable[Concatenate[Self, TimestampLike, P], Self]:
-    
-    @functools.wraps(f)
-    def wrapper(self, date: TimestampLike, *args: P.args, **kwargs: P.kwargs) -> Self:
-        # Retrieve meta for given day.
-        meta = self.meta.get(date, DateMeta())
-
-        # Call wrapped function with meta as first positional argument.
-        meta = f(self, meta, *args, **kwargs)
-        
-        # Update meta for date.
-        if len(meta) > 0:
-            self.meta[date] = meta
-        else:
-            self.meta.pop(date, None)
-
-        # Return self.
-        return self
-
-    return wrapper
-    
 class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=True, extra='forbid'):
     """
     Represents a modification to an existing exchange calendar.
@@ -260,6 +239,29 @@ class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=Tru
         self.__dict__['meta'] = meta
 
         return self
+
+    @staticmethod
+    def _with_meta(f: Callable[Concatenate[Self, DateMeta, P], DateMeta]) -> Callable[Concatenate[Self, TimestampLike, P], Self]:
+
+        @functools.wraps(f)
+        @validate_call(config={'arbitrary_types_allowed': True})
+        def wrapper(self, date: TimestampLike, *args: P.args, **kwargs: P.kwargs) -> Self:
+            # Retrieve meta for given day.
+            meta = self.meta.get(date, DateMeta())
+
+            # Call wrapped function with meta as first positional argument.
+            meta = f(self, meta, *args, **kwargs)
+
+            # Update meta for date.
+            if not meta:
+                self.meta.pop(date, None)
+            else:
+                self.meta[date] = meta
+
+            # Return self.
+            return self
+
+        return wrapper
 
     @validate_call(config={'arbitrary_types_allowed': True})
     def add_day(self, date: TimestampLike, props: DayPropsLike) -> Self:
@@ -337,15 +339,16 @@ class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=Tru
 
         return self
 
+    @_with_meta
     @validate_call(config={'arbitrary_types_allowed': True})
-    def set_tags(self, date: TimestampLike, tags: Tags) -> Self:
+    def set_tags(self, meta: DateMeta, tags: Tags) -> DateMeta:
         """
         Set the tags of a given day.
 
         Parameters
         ----------
-        date : TimestampLike
-            The day to set the tags for.
+        meta : DateMeta
+            The metadata for the day.
         tags : Tags
             The tags to set for the day. If None or empty, any tags for the day will be removed.
 
@@ -353,19 +356,56 @@ class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=Tru
         -------
         ExchangeCalendarChangeSet : self
         """
-        # Get current meta for day.
-        meta = self.meta.get(date, DateMeta())
 
         # Set the tags.
-        meta.tags = tags
+        meta.tags = tags or []
 
-        # Update meta for date.
-        if len(meta) > 0:
-            self.meta[date] = meta
-        else:
-            self.meta.pop(date, None)
+        return meta
 
-        return self
+    @_with_meta
+    @validate_call(config={'arbitrary_types_allowed': True})
+    def set_comment(self, meta: DateMeta, comment: Union[str, None]) -> DateMeta:
+        """
+        Set the comment for a given day.
+
+        Parameters
+        ----------
+        meta : DateMeta
+            The metadata for the day.
+        comment : str
+            The comment to set for the day. If None or empty, any comment for the day will be removed.
+
+        Returns
+        -------
+        ExchangeCalendarChangeSet : self
+        """
+
+        # Set the tags.
+        meta.comment = comment or None
+
+        return meta
+
+    @_with_meta
+    @validate_call(config={'arbitrary_types_allowed': True})
+    def set_meta(self, meta: DateMeta, meta0: Union[DateMeta, None]) -> DateMeta:
+        """
+        Set the metadata for a given day.
+
+        Parameters
+        ----------
+        meta : DateMeta
+            The metadata for the day.
+        meta0 : DateMeta
+            The metadata to set for the day.
+
+        Returns
+        -------
+        ExchangeCalendarChangeSet : self
+        """
+
+        # Set the tags.
+
+        return meta0
 
     @validate_call(config={'arbitrary_types_allowed': True})
     def clear_day(self, date: TimestampLike, include_meta: bool = False) -> Self:
