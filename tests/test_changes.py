@@ -6,8 +6,7 @@ import pytest
 from pydantic import ValidationError, TypeAdapter
 
 from exchange_calendars_extensions.api.changes import DayType, DayProps, DayPropsWithTime, ChangeSet, Tags, \
-    TimestampLike, \
-    DayPropsLike, DateMeta
+    TimestampLike, DayPropsLike, DayMeta
 
 # Validator for TimestampLike.
 TimeStampValidator = TypeAdapter(TimestampLike, config=dict(arbitrary_types_allowed=True))
@@ -16,7 +15,7 @@ TimeStampValidator = TypeAdapter(TimestampLike, config=dict(arbitrary_types_allo
 DayPropsValidator = TypeAdapter(DayPropsLike, config=dict(arbitrary_types_allowed=True))
 
 # Validator for DayMeta.
-DateMetaValidator = TypeAdapter(Union[DateMeta, None], config=dict(arbitrary_types_allowed=True))
+DayMetaValidator = TypeAdapter(Union[DayMeta, None], config=dict(arbitrary_types_allowed=True))
 
 
 def to_args(values: Collection):
@@ -53,13 +52,13 @@ INVALID_COMMENTS = [123, 123.456, {'foo': 'bar'}, ['foo', 'bar', 1]]
 
 VALID_META = [
     None,
-    DateMeta(),
+    DayMeta(),
     {'tags': ['foo', 'bar']},
-    DateMeta(tags=['foo', 'bar']),
+    DayMeta(tags=['foo', 'bar']),
     {'tags': ['foo', 'bar'], 'comment': 'This is a comment.'},
-    DateMeta(tags=['foo', 'bar'], comment='This is a comment.'),
+    DayMeta(tags=['foo', 'bar'], comment='This is a comment.'),
     {'comment': 'This is a comment.'},
-    DateMeta(comment='This is a comment.')
+    DayMeta(comment='This is a comment.')
 ]
 
 # Set of valid dates.
@@ -337,7 +336,7 @@ class TestChangeSet:
         ts = TimeStampValidator.validate_python(date)
 
         # Convert input to validated object.
-        meta = DateMetaValidator.validate_python(meta)
+        meta = DayMetaValidator.validate_python(meta)
 
         if meta is None or len(meta) == 0:
             assert len(cs) == 0

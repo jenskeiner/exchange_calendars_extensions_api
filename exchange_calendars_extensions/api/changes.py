@@ -146,7 +146,7 @@ DayPropsLike = Annotated[Union[DayProps, DayPropsWithTime], Field(discriminator=
 Tags = Union[List[str], Union[Tuple[str], Union[Set[str], None]]]
 
 
-class DateMeta(BaseModel, arbitrary_types_allowed=True, validate_assignment=True, extra='forbid'):
+class DayMeta(BaseModel, arbitrary_types_allowed=True, validate_assignment=True, extra='forbid'):
     """
     Metadata for a single date.
     """
@@ -158,7 +158,7 @@ class DateMeta(BaseModel, arbitrary_types_allowed=True, validate_assignment=True
     comment: Union[str, None] = None
 
     @model_validator(mode='after')
-    def _canonicalize(self) -> 'DateMeta':
+    def _canonicalize(self) -> 'DayMeta':
         # Sort tags alphabetically and remove duplicates.
         self.__dict__['tags'] = sorted(set(self.tags or []))
 
@@ -175,12 +175,12 @@ class DateMeta(BaseModel, arbitrary_types_allowed=True, validate_assignment=True
 P = ParamSpec('P')
 
 
-def _with_meta(f: Callable[Concatenate[Self, DateMeta, P], DateMeta]) -> Callable[Concatenate[Self, TimestampLike, P], Self]:
+def _with_meta(f: Callable[Concatenate[Self, DayMeta, P], DayMeta]) -> Callable[Concatenate[Self, TimestampLike, P], Self]:
     @functools.wraps(f)
     @validate_call(config={'arbitrary_types_allowed': True})
     def wrapper(self, date: TimestampLike, *args: P.args, **kwargs: P.kwargs) -> Self:
         # Retrieve meta for given day.
-        meta = self.meta.get(date, DateMeta())
+        meta = self.meta.get(date, DayMeta())
 
         # Call wrapped function with meta as first positional argument.
         meta = f(self, meta, *args, **kwargs)
@@ -243,7 +243,7 @@ class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=Tru
     """
     add: Dict[TimestampLike, DayPropsLike] = Field(default_factory=dict)
     remove: List[TimestampLike] = Field(default_factory=list)
-    meta: Dict[TimestampLike, DateMeta] = Field(default_factory=dict)
+    meta: Dict[TimestampLike, DayMeta] = Field(default_factory=dict)
 
     @model_validator(mode='after')
     def _canonicalize(self) -> 'ChangeSet':
@@ -340,13 +340,13 @@ class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=Tru
 
     @_with_meta
     @validate_call(config={'arbitrary_types_allowed': True})
-    def set_tags(self, meta: DateMeta, tags: Tags) -> DateMeta:
+    def set_tags(self, meta: DayMeta, tags: Tags) -> DayMeta:
         """
         Set the tags of a given day.
 
         Parameters
         ----------
-        meta : DateMeta
+        meta : DayMeta
             The metadata for the day.
         tags : Tags
             The tags to set for the day. If None or empty, any tags for the day will be removed.
@@ -363,13 +363,13 @@ class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=Tru
 
     @_with_meta
     @validate_call(config={'arbitrary_types_allowed': True})
-    def set_comment(self, meta: DateMeta, comment: Union[str, None]) -> DateMeta:
+    def set_comment(self, meta: DayMeta, comment: Union[str, None]) -> DayMeta:
         """
         Set the comment for a given day.
 
         Parameters
         ----------
-        meta : DateMeta
+        meta : DayMeta
             The metadata for the day.
         comment : str
             The comment to set for the day. If None or empty, any comment for the day will be removed.
@@ -386,15 +386,15 @@ class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=Tru
 
     @_with_meta
     @validate_call(config={'arbitrary_types_allowed': True})
-    def set_meta(self, meta: DateMeta, meta0: Union[DateMeta, None]) -> DateMeta:
+    def set_meta(self, meta: DayMeta, meta0: Union[DayMeta, None]) -> DayMeta:
         """
         Set the metadata for a given day.
 
         Parameters
         ----------
-        meta : DateMeta
+        meta : DayMeta
             The metadata for the day.
-        meta0 : DateMeta
+        meta0 : DayMeta
             The metadata to set for the day.
 
         Returns
