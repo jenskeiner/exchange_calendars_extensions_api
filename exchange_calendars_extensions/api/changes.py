@@ -175,6 +175,28 @@ class DateMeta(BaseModel, arbitrary_types_allowed=True, validate_assignment=True
 P = ParamSpec('P')
 
 
+def _with_meta(f: Callable[Concatenate[Self, DateMeta, P], DateMeta]) -> Callable[Concatenate[Self, TimestampLike, P], Self]:
+    @functools.wraps(f)
+    @validate_call(config={'arbitrary_types_allowed': True})
+    def wrapper(self, date: TimestampLike, *args: P.args, **kwargs: P.kwargs) -> Self:
+        # Retrieve meta for given day.
+        meta = self.meta.get(date, DateMeta())
+
+        # Call wrapped function with meta as first positional argument.
+        meta = f(self, meta, *args, **kwargs)
+
+        # Update meta for date.
+        if not meta:
+            self.meta.pop(date, None)
+        else:
+            self.meta[date] = meta
+
+        # Return self.
+        return self
+
+    return wrapper
+
+
 class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=True, extra='forbid'):
     """
     Represents a modification to an existing exchange calendar.
@@ -239,29 +261,6 @@ class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=Tru
         self.__dict__['meta'] = meta
 
         return self
-
-    @staticmethod
-    def _with_meta(f: Callable[Concatenate[Self, DateMeta, P], DateMeta]) -> Callable[Concatenate[Self, TimestampLike, P], Self]:
-
-        @functools.wraps(f)
-        @validate_call(config={'arbitrary_types_allowed': True})
-        def wrapper(self, date: TimestampLike, *args: P.args, **kwargs: P.kwargs) -> Self:
-            # Retrieve meta for given day.
-            meta = self.meta.get(date, DateMeta())
-
-            # Call wrapped function with meta as first positional argument.
-            meta = f(self, meta, *args, **kwargs)
-
-            # Update meta for date.
-            if not meta:
-                self.meta.pop(date, None)
-            else:
-                self.meta[date] = meta
-
-            # Return self.
-            return self
-
-        return wrapper
 
     @validate_call(config={'arbitrary_types_allowed': True})
     def add_day(self, date: TimestampLike, props: DayPropsLike) -> Self:
