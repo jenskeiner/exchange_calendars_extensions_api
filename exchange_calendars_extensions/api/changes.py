@@ -1,18 +1,22 @@
 import datetime as dt
+import functools
+from collections import OrderedDict
 from enum import Enum, unique
-from functools import reduce
-from typing import List, Tuple
+from typing import List, Set, Tuple
 
 import pandas as pd
 from pydantic import BaseModel, Field, RootModel, model_validator, validate_call
 from pydantic.functional_validators import BeforeValidator
-from typing_extensions import Literal, Union, Annotated, Dict, Any, Self
+from typing_extensions import Literal, Union, Annotated, Dict, Any, Self, Callable, Concatenate, ParamSpec
 
 
 @unique
 class DayType(str, Enum):
     """
     Enum for the different types of holidays and special sessions.
+
+    Assumed to be mutually exclusive, e.g., a special open day cannot be a monthly expiry day as well, although both are
+    business days.
 
     HOLIDAY: A holiday.
     SPECIAL_OPEN: A special session with a special opening time.
@@ -62,22 +66,29 @@ def _to_timestamp(value: Any) -> pd.Timestamp:
 TimestampLike = Annotated[pd.Timestamp, BeforeValidator(_to_timestamp)]
 
 
-class AbstractDaySpec(BaseModel, arbitrary_types_allowed=True, validate_assignment=True, extra='forbid'):
+class AbstractDayProps(BaseModel, arbitrary_types_allowed=True, validate_assignment=True, extra='forbid'):
     """
-    Abstract base class for special day specification.
+    Abstract base class for special day properties.
     """
-    date: TimestampLike  # The date of the special day.
-    name: str  # The name of the special day.
+    name: str  # The name of the day.
 
 
-class DaySpec(AbstractDaySpec):
+# class AbstractDaySpec(AbstractDayProperties, arbitrary_types_allowed=True, validate_assignment=True, extra='forbid'):
+#     """
+#     Abstract base class for special day specification.
+#     """
+#     date: TimestampLike  # The date of the special day.
+#     name: str  # The name of the special day.
+
+
+class DayProps(AbstractDayProps):
     """
     Vanilla special day specification.
     """
     type: Literal[DayType.HOLIDAY, DayType.MONTHLY_EXPIRY, DayType.QUARTERLY_EXPIRY]  # The type of the special day.
 
     def __str__(self):
-        return f'{{date={self.date.date().isoformat()}, type={self.type.name}, name="{self.name}"}}'
+        return f'{{type={self.type.name}, name="{self.name}"}}'
 
 
 def _to_time(value: Union[dt.time, str]):
@@ -118,7 +129,7 @@ def _to_time(value: Union[dt.time, str]):
 TimeLike = Annotated[dt.time, BeforeValidator(_to_time)]
 
 
-class DaySpecWithTime(AbstractDaySpec):
+class DayPropsWithTime(AbstractDayProps):
     """
     Special day specification that requires a (open/close) time.
     """
@@ -126,7 +137,64 @@ class DaySpecWithTime(AbstractDaySpec):
     time: TimeLike  # The open/close time of the special day.
 
     def __str__(self):
-        return f'{{date={self.date.date().isoformat()}, type={self.type.name}, name="{self.name}", time={self.time}}}'
+        return f'{{type={self.type.name}, name="{self.name}", time={self.time}}}'
+
+
+# Type alias for valid day properties.
+DayPropsLike = Annotated[Union[DayProps, DayPropsWithTime], Field(discriminator='type')]
+
+Tags = Union[List[str], Union[Tuple[str], Union[Set[str], None]]]
+
+
+class DayMeta(BaseModel, arbitrary_types_allowed=True, validate_assignment=True, extra='forbid'):
+    """
+    Metadata for a single date.
+    """
+
+    # Collection of tags.
+    tags: Tags = []
+
+    # Free-form comment.
+    comment: Union[str, None] = None
+
+    @model_validator(mode='after')
+    def _canonicalize(self) -> 'DayMeta':
+        # Sort tags alphabetically and remove duplicates.
+        self.__dict__['tags'] = sorted(set(self.tags or []))
+
+        # Strip comment of whitespace and set to None if empty.
+        if self.comment is not None:
+            self.__dict__['comment'] = self.comment.strip() or None
+
+        return self
+
+    def __len__(self):
+        return len(self.tags) + (1 if self.comment is not None else 0)
+
+
+P = ParamSpec('P')
+
+
+def _with_meta(f: Callable[Concatenate[Self, DayMeta, P], DayMeta]) -> Callable[Concatenate[Self, TimestampLike, P], Self]:
+    @functools.wraps(f)
+    @validate_call(config={'arbitrary_types_allowed': True})
+    def wrapper(self, date: TimestampLike, *args: P.args, **kwargs: P.kwargs) -> Self:
+        # Retrieve meta for given day.
+        meta = self.meta.get(date, DayMeta())
+
+        # Call wrapped function with meta as first positional argument.
+        meta = f(self, meta, *args, **kwargs)
+
+        # Update meta for date.
+        if not meta:
+            self.meta.pop(date, None)
+        else:
+            self.meta[date] = meta
+
+        # Return self.
+        return self
+
+    return wrapper
 
 
 class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=True, extra='forbid'):
@@ -173,55 +241,64 @@ class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=Tru
     ensures that adding a new day for a given day type becomes an upsert operation, i.e. the day is added if it does not
     already exist in any day type category, and updated/moved to the new day type if it does.
     """
-    add: List[Annotated[Union[DaySpec, DaySpecWithTime], Field(discriminator='type')]] = Field(default_factory=list)
+    add: Dict[TimestampLike, DayPropsLike] = Field(default_factory=dict)
     remove: List[TimestampLike] = Field(default_factory=list)
+    meta: Dict[TimestampLike, DayMeta] = Field(default_factory=dict)
 
     @model_validator(mode='after')
-    def _validate_consistency(self) -> 'ChangeSet':
-        add = sorted(self.add, key=lambda x: x.date)
+    def _canonicalize(self) -> 'ChangeSet':
+        # Sort days to add by date.
+        add = OrderedDict(sorted(self.add.items(), key=lambda i: i[0]))
+
+        # Sort days to remove by date and remove duplicates.
         remove = sorted(set(self.remove))
 
-        # Get list of duplicate days to add.
-        if len(add) > 0:
-            dupes = list(
-                filter(
-                    lambda x: len(x) > 1,
-                    reduce(
-                        lambda x, y: x[:-1] + ([x[-1] + [y]] if x[-1][0].date == y.date else [x[-1], [y]]),
-                        add[1:],
-                        [[add[0]]])))
-
-            if len(dupes) > 0:
-                raise ValueError(
-                    f'Duplicates in days to add: {", ".join(("[" + ", ".join(map(str, d)) + "]" for d in dupes))}.')
+        # Sort meta by date. Sort tag values and remove duplicates.
+        meta = OrderedDict([(k, v) for k, v in sorted(self.meta.items(), key=lambda i: i[0])])
 
         self.__dict__['add'] = add
         self.__dict__['remove'] = remove
+        self.__dict__['meta'] = meta
+
         return self
 
     @validate_call(config={'arbitrary_types_allowed': True})
-    def add_day(self, spec: Annotated[Union[DaySpec, DaySpecWithTime, dict], Field(discriminator='type')]) -> Self:
+    def add_day(self, date: TimestampLike, props: DayPropsLike) -> Self:
         """
         Add a day to the change set.
 
         Parameters
         ----------
-        spec : Annotated[Union[DaySpec, DaySpecWithTime], Field(discriminator='type')]
+        date : TimestampLike
             The day to add.
+        props : Annotated[Union[DayProps, DayPropsWithTime], Field(discriminator='type')]
+            The properties of the day to add.
 
         Returns
         -------
         ExchangeCalendarChangeSet : self
         """
-        self.add.append(spec)
+
+        # Checks if day is already in the dictionary of days to add.
+        if date in self.add:
+            # Throw an exception.
+            raise ValueError(f'Day {date} already in days to add.')
+
+        # Previous value.
+        prev = self.add.get(date, None)
+
+        # Add the day to the dictionary of days to add.
+        self.add[date] = props
 
         # Trigger validation.
         try:
             self.model_validate(self, strict=True)
         except Exception as e:
-            # If the days to add are no longer consistent, then this can only be because the date was already in the
-            # list. Remove the offending duplicate.
-            self.add.remove(spec)
+            # Restore previous state.
+            if prev is not None:
+                self.add[date] = prev
+            else:
+                del self.add[date]
 
             # Let exception bubble up.
             raise e
@@ -261,8 +338,76 @@ class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=Tru
 
         return self
 
+    @_with_meta
     @validate_call(config={'arbitrary_types_allowed': True})
-    def clear_day(self, date: TimestampLike) -> Self:
+    def set_tags(self, meta: DayMeta, tags: Tags) -> DayMeta:
+        """
+        Set the tags of a given day.
+
+        Parameters
+        ----------
+        meta : DayMeta
+            The metadata for the day.
+        tags : Tags
+            The tags to set for the day. If None or empty, any tags for the day will be removed.
+
+        Returns
+        -------
+        ExchangeCalendarChangeSet : self
+        """
+
+        # Set the tags.
+        meta.tags = tags or []
+
+        return meta
+
+    @_with_meta
+    @validate_call(config={'arbitrary_types_allowed': True})
+    def set_comment(self, meta: DayMeta, comment: Union[str, None]) -> DayMeta:
+        """
+        Set the comment for a given day.
+
+        Parameters
+        ----------
+        meta : DayMeta
+            The metadata for the day.
+        comment : str
+            The comment to set for the day. If None or empty, any comment for the day will be removed.
+
+        Returns
+        -------
+        ExchangeCalendarChangeSet : self
+        """
+
+        # Set the tags.
+        meta.comment = comment or None
+
+        return meta
+
+    @_with_meta
+    @validate_call(config={'arbitrary_types_allowed': True})
+    def set_meta(self, meta: DayMeta, meta0: Union[DayMeta, None]) -> DayMeta:
+        """
+        Set the metadata for a given day.
+
+        Parameters
+        ----------
+        meta : DayMeta
+            The metadata for the day.
+        meta0 : DayMeta
+            The metadata to set for the day.
+
+        Returns
+        -------
+        ExchangeCalendarChangeSet : self
+        """
+
+        # Set the tags.
+
+        return meta0
+
+    @validate_call(config={'arbitrary_types_allowed': True})
+    def clear_day(self, date: TimestampLike, include_meta: bool = False) -> Self:
         """
         Clear a day from the change set.
 
@@ -270,6 +415,8 @@ class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=Tru
         ----------
         date : TimestampLike
             The date to clear. Must be convertible to pandas.Timestamp.
+        include_meta : bool
+            Whether to also remove any metadata associated with the given date.
 
         Returns
         -------
@@ -277,14 +424,22 @@ class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=Tru
         """
 
         # Avoid re-validation since this change cannot make the changeset inconsistent.
-        self.__dict__['add'] = [x for x in self.add if x.date != date]
+        self.__dict__['add'].pop(date, None)
         self.__dict__['remove'] = [x for x in self.remove if x != date]
+
+        if include_meta:
+            self.__dict__['meta'].pop(date, None)
 
         return self
 
-    def clear(self) -> Self:
+    def clear(self, include_meta: bool = False) -> Self:
         """
         Clear all changes.
+
+        Parameters
+        ----------
+        include_meta : bool
+            Whether to also clear any metadata.
 
         Returns
         -------
@@ -293,30 +448,45 @@ class ChangeSet(BaseModel, arbitrary_types_allowed=True, validate_assignment=Tru
         self.add.clear()
         self.remove.clear()
 
+        if include_meta:
+            self.meta.clear()
+
         return self
 
     def __len__(self):
-        return len(self.add) + len(self.remove)
+        return len(self.add) + len(self.remove) + len(self.meta)
 
     def __eq__(self, other):
         if not isinstance(other, ChangeSet):
             return False
 
-        return self.add == other.add and self.remove == other.remove
+        return self.add == other.add and self.remove == other.remove and self.meta == other.meta
 
-    @property
-    def all_days(self) -> Tuple[pd.Timestamp]:
+    def all_days(self, include_meta: bool = False) -> Tuple[pd.Timestamp, ...]:
         """
         All unique dates contained in the changeset.
 
         This is the union of the dates to add and the dates to remove, with any duplicates removed.
 
+        Parameters
+        ----------
+        include_meta : bool
+            Whether to also include any days for which metadata has been set.
+
         Returns
         -------
-        Iterable[pd.Timestamp]
-            All days in the changeset.
+        Tuple[pd.Timestamp, ...]
+            All unique days in the changeset.
         """
-        return tuple(sorted(set(map(lambda x: x.date, self.add)).union(set(self.remove))))
+        # Take union of dates to add and dates to remove.
+        dates = set(self.add.keys()).union(set(self.remove))
+
+        # Add dates associated with tags, maybe.
+        if include_meta:
+            dates = dates.union(set(self.meta.keys()))
+
+        # Return as sorted tuple.
+        return tuple(sorted(dates))
 
 
 # A type alias for a dictionary of changesets, mapping exchange key to a corresponding change set.
