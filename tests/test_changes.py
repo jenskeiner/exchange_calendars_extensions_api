@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 from pydantic import ValidationError, TypeAdapter
 
-from exchange_calendars_extensions.api.changes import (
+from src.exchange_calendars_extensions.api.changes import (
     DayType,
     DayProps,
     DayPropsWithTime,
