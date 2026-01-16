@@ -14,6 +14,8 @@ from pydantic import (
     WithJsonSchema,
     BeforeValidator,
     AfterValidator,
+    TypeAdapter,
+    ConfigDict,
 )
 from typing_extensions import (
     Literal,
@@ -128,9 +130,7 @@ DateLike = Annotated[
 ]
 
 
-class AbstractDayProps(
-    BaseModel, arbitrary_types_allowed=True, validate_assignment=True, extra="forbid"
-):
+class AbstractDayProps(BaseModel, validate_assignment=True, extra="forbid"):
     """
     Abstract base class for special day properties.
     """
@@ -221,9 +221,7 @@ Tags = Annotated[
 ]
 
 
-class DayMeta(
-    BaseModel, arbitrary_types_allowed=True, validate_assignment=True, extra="forbid"
-):
+class DayMeta(BaseModel, validate_assignment=True, extra="forbid"):
     """
     Metadata for a single date.
     """
@@ -252,15 +250,18 @@ class DayMeta(
 T_Self = TypeVar("S")
 P = ParamSpec("P")
 
+_ta_datelike = TypeAdapter(DateLike, config=ConfigDict(arbitrary_types_allowed=True))
+
 
 def _with_meta(
     f: Callable[Concatenate[T_Self, DayMeta, P], DayMeta],
 ) -> Callable[Concatenate[T_Self, DateLike, P], T_Self]:
     @functools.wraps(f)
-    @validate_call(config={"arbitrary_types_allowed": True})
     def wrapper(
         self: T_Self, date: DateLike, *args: P.args, **kwargs: P.kwargs
     ) -> T_Self:
+        date = _ta_datelike.validate_python(date)
+
         # Retrieve meta for given day.
         meta = self.meta.get(date, DayMeta())
 
@@ -434,7 +435,7 @@ class ChangeSet(
         return self
 
     @_with_meta
-    @validate_call(config={"arbitrary_types_allowed": True})
+    @validate_call
     def set_tags(self, meta: DayMeta, tags: Tags) -> DayMeta:
         """
         Set the tags of a given day.
@@ -457,7 +458,7 @@ class ChangeSet(
         return meta
 
     @_with_meta
-    @validate_call(config={"arbitrary_types_allowed": True})
+    @validate_call
     def set_comment(self, meta: DayMeta, comment: Union[str, None]) -> DayMeta:
         """
         Set the comment for a given day.
@@ -480,7 +481,7 @@ class ChangeSet(
         return meta
 
     @_with_meta
-    @validate_call(config={"arbitrary_types_allowed": True})
+    @validate_call
     def set_meta(self, meta: DayMeta, meta0: Union[DayMeta, None]) -> DayMeta:
         """
         Set the metadata for a given day.
