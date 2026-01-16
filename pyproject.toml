@@ -16,6 +16,8 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "License :: OSI Approved :: Apache Software License",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering",
@@ -27,6 +29,12 @@ dependencies = [
     "pydantic>=2,<3",
     "pandas>=1,<3"
 ]
+
+[project.urls]
+homepage = "https://github.com/jenskeiner/exchange_calendars_extensions_api/"
+repository = "https://github.com/jenskeiner/exchange_calendars_extensions_api.git"
+documentation = "https://github.com/jenskeiner/exchange_calendars_extensions_api/"
+issues = "https://github.com/jenskeiner/exchange_calendars_extensions_api/issues"
 
 [dependency-groups]
 dev = [
