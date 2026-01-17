@@ -13,7 +13,7 @@ jobs:
   build-and-publish-testpypi:
     name: Build and publish Python distributions to TestPyPI.
     runs-on: ubuntu-latest
-    environment: pypi
+    environment: testpypi
     permissions:
       id-token: write
     steps:
