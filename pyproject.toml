@@ -45,7 +45,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling>=1.21.1"]
+requires = ["hatchling>=1.21.1", "versioningit"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]
@@ -63,8 +63,10 @@ sources = ["src"]
 only-include = ["src/exchange_calendars_extensions"]
 
 [tool.hatch.version]
-source = "env"
-variable = "PACKAGE_VERSION"
+source = "versioningit"
+
+[tool.versioningit.format]
+method = { module = "versioningit_gitflow.version", value = "get_version", module-dir = "src" }
 
 [tool.pytest.ini_options]
 addopts = "--cov=exchange_calendars_extensions.api --cov-report=term-missing --cov-report=html"
