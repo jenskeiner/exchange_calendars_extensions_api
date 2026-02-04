@@ -293,7 +293,7 @@ class TestChangeSet:
 
     @pytest.mark.parametrize(["date"], to_args(VALID_DATES))
     @pytest.mark.parametrize(["comment"], to_args(VALID_COMMENTS))
-    def test_set_comment(self, date: DateLike, comment: Union[str, None]):
+    def test_set_comment(self, date: DateLike, comment: str | None):
         cs = ChangeSet()
         cs.set_comment(date, comment)
 

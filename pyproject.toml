@@ -1,13 +1,19 @@
+[build-system]
+requires = ["hatchling>=1.21.1", "hatch-env-plus>=1.0.0"]
+build-backend = "hatchling.build"
+
 [project]
 name = "exchange-calendars-extensions-api"
 dynamic = ["version"]
 description = "A package that defines parts of the API of the exchange-calendars-extensions package."
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [
     { name = "Jens Keiner", email = "jens.keiner@gmail.com" }
 ]
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Apache-2.0" }
+keywords = ["exchange", "calendar", "trading", "holidays"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: Python",
@@ -44,9 +50,9 @@ dev = [
     "pre-commit>=4,<5"
 ]
 
-[build-system]
-requires = ["hatchling>=1.21.1", "hatch-env-plus>=0.1.0"]
-build-backend = "hatchling.build"
+[tool.hatch.version]
+source = "env-plus"
+variable = "PACKAGE_VERSION"
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -62,10 +68,6 @@ exclude = [
 sources = ["src"]
 only-include = ["src/exchange_calendars_extensions"]
 
-[tool.hatch.version]
-source = "env-plus"
-variable = "PACKAGE_VERSION"
-
 [tool.pytest.ini_options]
-addopts = "--cov=exchange_calendars_extensions.api --cov-report=term-missing --cov-report=html"
+addopts = "--cov=exchange_calendars_extensions.api --cov-report=term-missing"
 testpaths = ["tests"]
