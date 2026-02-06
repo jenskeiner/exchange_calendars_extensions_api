@@ -2,7 +2,8 @@ import datetime as dt
 import functools
 from collections import OrderedDict
 from enum import Enum, unique
-from typing import Union, Annotated, Callable
+from typing import Union, Annotated
+from collections.abc import Callable
 
 import pandas as pd
 from pydantic import (
@@ -18,13 +19,12 @@ from pydantic import (
     ConfigDict,
 )
 from typing_extensions import (
-    Literal,
     Any,
     Self,
-    Concatenate,
     ParamSpec,
     TypeVar,
 )
+from typing import Literal, Concatenate
 
 
 @unique
@@ -155,7 +155,7 @@ class DayProps(AbstractDayProps):
         return f'{{type={self.type.name}, name="{self.name}"}}'
 
 
-def _to_time(value: Union[dt.time, str]):
+def _to_time(value: dt.time | str):
     """
     Convert value to time.
 
@@ -230,7 +230,7 @@ class DayMeta(BaseModel, validate_assignment=True, extra="forbid"):
     tags: Tags = []
 
     # Free-form comment.
-    comment: Union[str, None] = Field(default=None, examples=["This is a comment."])
+    comment: str | None = Field(default=None, examples=["This is a comment."])
 
     @model_validator(mode="after")
     def _canonicalize(self) -> "DayMeta":
@@ -459,7 +459,7 @@ class ChangeSet(
 
     @_with_meta
     @validate_call
-    def set_comment(self, meta: DayMeta, comment: Union[str, None]) -> DayMeta:
+    def set_comment(self, meta: DayMeta, comment: str | None) -> DayMeta:
         """
         Set the comment for a given day.
 
@@ -482,7 +482,7 @@ class ChangeSet(
 
     @_with_meta
     @validate_call
-    def set_meta(self, meta: DayMeta, meta0: Union[DayMeta, None]) -> DayMeta:
+    def set_meta(self, meta: DayMeta, meta0: DayMeta | None) -> DayMeta:
         """
         Set the metadata for a given day.
 
