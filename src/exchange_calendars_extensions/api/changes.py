@@ -1,30 +1,32 @@
 import datetime as dt
 import functools
+import re
 from collections import OrderedDict
-from enum import Enum, unique
-from typing import Union, Annotated
 from collections.abc import Callable
+from enum import Enum, unique
+from typing import Annotated, Concatenate, Literal, Union
 
 import pandas as pd
 from pydantic import (
+    AfterValidator,
     BaseModel,
+    BeforeValidator,
+    ConfigDict,
     Field,
+    GetCoreSchemaHandler,
     RootModel,
+    TypeAdapter,
+    WithJsonSchema,
     model_validator,
     validate_call,
-    WithJsonSchema,
-    BeforeValidator,
-    AfterValidator,
-    TypeAdapter,
-    ConfigDict,
 )
+from pydantic_core import CoreSchema, core_schema
 from typing_extensions import (
     Any,
-    Self,
     ParamSpec,
+    Self,
     TypeVar,
 )
-from typing import Literal, Concatenate
 
 
 @unique
@@ -215,8 +217,66 @@ class DayPropsWithTime(AbstractDayProps):
 # Type alias for valid day properties.
 DayPropsLike = Annotated[Union[DayProps, DayPropsWithTime], Field(discriminator="type")]
 
+_PATTERN = re.compile(r"^(?P<namespace>[a-zA-Z0-9\-_.]+):(?P<value>[a-zA-Z0-9\-_.]+)$")
+
+
+class Tag(str):
+    """A string with a validated namespace prefix and arbitrary value.
+
+    Format: <namespace>:<value>
+    - namespace: [a-zA-Z0-9-_.]+
+    - value: any characters, at least one
+
+    Example:
+        s = Tag("my.namespace:some/arbitrary/value")
+        s.namespace  # "my.namespace"
+        s.value      # "some/arbitrary/value"
+        str(s)       # "my.namespace:some/arbitrary/value"
+    """
+
+    _namespace: str
+    _value: str
+
+    def __new__(cls, v: str) -> "Tag":
+        match = _PATTERN.match(v)
+        if not match:
+            raise ValueError(
+                f"Invalid Tag {v!r}. Expected format '<namespace>:<value>' where namespace and value match the regex "
+                f"'[a-zA-Z0-9-_.]+'."
+            )
+        instance = super().__new__(cls, v)
+        instance._namespace = match.group("namespace")
+        instance._value = match.group("value")
+        return instance
+
+    @property
+    def namespace(self) -> str:
+        return self._namespace
+
+    @property
+    def value(self) -> str:
+        return self._value
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source_type: Any, handler: GetCoreSchemaHandler
+    ) -> CoreSchema:
+        return core_schema.no_info_plain_validator_function(
+            cls._validate,
+            serialization=core_schema.to_string_ser_schema(),
+        )
+
+    @classmethod
+    def _validate(cls, v: Any) -> "Tag":
+        if isinstance(v, cls):
+            return v
+        if isinstance(v, str):
+            return cls(v)
+        raise ValueError(f"Expected a string, got {type(v).__name__!r}")
+
+
 Tags = Annotated[
-    Union[list[str], Union[tuple[str], Union[set[str], None]]],
+    set[Tag],
     Field(examples=[["tag1", "tag2"]]),
 ]
 
@@ -227,16 +287,13 @@ class DayMeta(BaseModel, validate_assignment=True, extra="forbid"):
     """
 
     # Collection of tags.
-    tags: Tags = []
+    tags: Tags = set()
 
     # Free-form comment.
     comment: str | None = Field(default=None, examples=["This is a comment."])
 
     @model_validator(mode="after")
     def _canonicalize(self) -> "DayMeta":
-        # Sort tags alphabetically and remove duplicates.
-        self.__dict__["tags"] = sorted(set(self.tags or []))
-
         # Strip comment of whitespace and set to None if empty.
         if self.comment is not None:
             self.__dict__["comment"] = self.comment.strip() or None
@@ -247,14 +304,14 @@ class DayMeta(BaseModel, validate_assignment=True, extra="forbid"):
         return len(self.tags) + (1 if self.comment is not None else 0)
 
 
-T_Self = TypeVar("S")
+T_Self = TypeVar("T_Self")
 P = ParamSpec("P")
 
 _ta_datelike = TypeAdapter(DateLike, config=ConfigDict(arbitrary_types_allowed=True))
 
 
 def _with_meta(
-    f: Callable[Concatenate[T_Self, DayMeta, P], DayMeta],
+    f: Callable[Concatenate[T_Self, DayMeta, P], DayMeta | None],
 ) -> Callable[Concatenate[T_Self, DateLike, P], T_Self]:
     @functools.wraps(f)
     def wrapper(
@@ -296,7 +353,7 @@ class ChangeSet(
 
     A changeset is consistent if and only if the following conditions are satisfied:
     1) For each day type, the corresponding dates to add and dates to remove do not overlap.
-    2) For each distinct pair of day types, the dates to add must not overlap
+    2) For each distinct pair of day types, the dates to add do not overlap.
 
     Condition 1) ensures that the same day is not added and removed at the same time for the same day type. Condition 2)
     ensures that the same day is not added for two different day types.
@@ -453,7 +510,7 @@ class ChangeSet(
         """
 
         # Set the tags.
-        meta.tags = tags or []
+        meta.tags = tags or set()
 
         return meta
 
@@ -482,13 +539,13 @@ class ChangeSet(
 
     @_with_meta
     @validate_call
-    def set_meta(self, meta: DayMeta, meta0: DayMeta | None) -> DayMeta:
+    def set_meta(self, _meta: DayMeta, meta0: DayMeta | None) -> DayMeta | None:
         """
         Set the metadata for a given day.
 
         Parameters
         ----------
-        meta : DayMeta
+        _meta : DayMeta
             The metadata for the day.
         meta0 : DayMeta
             The metadata to set for the day.
@@ -497,9 +554,6 @@ class ChangeSet(
         -------
         ExchangeCalendarChangeSet : self
         """
-
-        # Set the tags.
-
         return meta0
 
     @validate_call(config={"arbitrary_types_allowed": True})

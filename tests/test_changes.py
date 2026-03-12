@@ -1,20 +1,21 @@
 import datetime as dt
-from typing import Any, Union
 from collections.abc import Collection
+from typing import Any, Union
 
 import pandas as pd
 import pytest
-from pydantic import ValidationError, TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 from src.exchange_calendars_extensions.api.changes import (
-    DayType,
-    DayProps,
-    DayPropsWithTime,
     ChangeSet,
-    Tags,
     DateLike,
-    DayPropsLike,
     DayMeta,
+    DayProps,
+    DayPropsLike,
+    DayPropsWithTime,
+    DayType,
+    Tag,
+    Tags,
 )
 
 # Validator for TimestampLike.
@@ -49,19 +50,25 @@ def to_args(values: Collection):
     return list(map(lambda x: (x,), values))
 
 
+DEFAULT_TAGS: set[Tag] = {Tag("ns:foo"), Tag("ns:bar")}
+
+
+@pytest.fixture
+def default_tags() -> set[Tag]:
+    return {x for x in DEFAULT_TAGS}
+
+
 # Set of valid tags.
 VALID_TAGS = [
-    None,
-    [],
-    ["foo"],
-    ["foo", "bar"],
-    ["foo", "bar", "foo"],
-    ("foo", "bar", "foo"),
-    {"foo", "bar"},
+    set(),
+    {
+        "ns:foo",
+    },
+    {"ns0:foo", "ns1:bar"},
 ]
 
 # Set of invalid tags.
-INVALID_TAGS = [123, 123.456, "foo", {"foo": "bar"}, ["foo", "bar", 1]]
+INVALID_TAGS = [123, 123.456, "foo", {"ns:foo": "bar"}, ["ns:foo", "ns:bar", 1]]
 
 # Valid comments.
 VALID_COMMENTS = [None, "", "This is a comment."]
@@ -72,10 +79,10 @@ INVALID_COMMENTS = [123, 123.456, {"foo": "bar"}, ["foo", "bar", 1]]
 VALID_META = [
     None,
     DayMeta(),
-    {"tags": ["foo", "bar"]},
-    DayMeta(tags=["foo", "bar"]),
-    {"tags": ["foo", "bar"], "comment": "This is a comment."},
-    DayMeta(tags=["foo", "bar"], comment="This is a comment."),
+    {"tags": ["ns:foo", "ns:bar"]},
+    DayMeta(tags=DEFAULT_TAGS),
+    {"tags": ["ns:foo", "ns:bar"], "comment": "This is a comment."},
+    DayMeta(tags=DEFAULT_TAGS, comment="This is a comment."),
     {"comment": "This is a comment."},
     DayMeta(comment="This is a comment."),
 ]
@@ -235,18 +242,18 @@ class TestChangeSet:
         else:
             # Non-empty set of tags. Duplicates should be removed and the result should be sorted.
             assert len(cs) == 1
-            assert cs.meta[ts].tags == sorted(set(tags))
+            assert cs.meta[ts].tags == tags
             assert cs.meta[ts].comment is None
 
     @pytest.mark.parametrize(["date"], to_args(INVALID_DATES))
-    def test_set_tags_invalid_date(self, date: Any):
+    def test_set_tags_invalid_date(self, date: Any, default_tags: Tags):
         # Fresh changeset.
         cs = ChangeSet()
 
         # Set tags.
         # noinspection PyTypeChecker
         with pytest.raises((ValidationError, TypeError)):
-            cs.set_tags(date, ["foo", "bar"])
+            cs.set_tags(date, default_tags)
 
     @pytest.mark.parametrize(["tags"], to_args(INVALID_TAGS))
     def test_set_tags_invalid_tags(self, tags: Any):
@@ -256,40 +263,6 @@ class TestChangeSet:
         # Set invalid tags.
         with pytest.raises(ValueError):
             cs.set_tags("2020-01-01", tags)
-
-    def test_set_tags_to_none(self):
-        d: str = "2020-01-01"
-        ts: pd.Timestamp = TimeStampValidator.validate_python(d)
-
-        # Fresh changeset.
-        cs = ChangeSet()
-
-        # Set tags.
-        cs.set_tags(d, ["foo", "bar"])
-
-        # Set comment.
-        cs.set_comment(d, "This is a comment.")
-
-        assert len(cs) == 1
-        assert cs.add == dict()
-        assert cs.remove == []
-        assert ts in cs.meta
-        assert cs.meta[ts].tags == ["bar", "foo"]  # Tags get sorted alphabetically.
-        assert cs.meta[ts].comment == "This is a comment."
-
-        # Set tags to None.
-        cs.set_tags(d, None)
-
-        assert len(cs) == 1
-        assert cs.add == dict()
-        assert cs.remove == []
-        assert ts in cs.meta
-        assert (
-            cs.meta[ts].tags == []
-        )  # Setting tags to None should actually set the tags to the empty list.
-        assert cs.meta[ts].comment == "This is a comment."
-
-    # set_comment
 
     @pytest.mark.parametrize(["date"], to_args(VALID_DATES))
     @pytest.mark.parametrize(["comment"], to_args(VALID_COMMENTS))
@@ -307,7 +280,7 @@ class TestChangeSet:
         else:
             # Non-empty comment.
             assert len(cs) == 1
-            assert cs.meta[ts].tags == []
+            assert cs.meta[ts].tags == set()
             assert cs.meta[ts].comment == comment
 
     @pytest.mark.parametrize(["date"], to_args(INVALID_DATES))
@@ -329,7 +302,7 @@ class TestChangeSet:
         with pytest.raises(ValueError):
             cs.set_comment("2020-01-01", comment)
 
-    def test_set_comment_to_empty_string(self):
+    def test_set_comment_to_empty_string(self, default_tags):
         d: str = "2020-01-01"
         ts: pd.Timestamp = TimeStampValidator.validate_python(d)
 
@@ -337,7 +310,7 @@ class TestChangeSet:
         cs = ChangeSet()
 
         # Set tags.
-        cs.set_tags(d, ["foo", "bar"])
+        cs.set_tags(d, default_tags)
 
         # Set comment.
         cs.set_comment(d, "This is a comment.")
@@ -346,7 +319,7 @@ class TestChangeSet:
         assert cs.add == dict()
         assert cs.remove == []
         assert ts in cs.meta
-        assert cs.meta[ts].tags == ["bar", "foo"]
+        assert cs.meta[ts].tags == default_tags
         assert cs.meta[ts].comment == "This is a comment."
 
         # Set comment to empty string.
@@ -356,7 +329,7 @@ class TestChangeSet:
         assert cs.add == dict()
         assert cs.remove == []
         assert ts in cs.meta
-        assert cs.meta[ts].tags == ["bar", "foo"]
+        assert cs.meta[ts].tags == default_tags
         assert cs.meta[ts].comment is None  # Empty string should convert to None.
 
     # set_meta
@@ -391,7 +364,13 @@ class TestChangeSet:
     )
     @pytest.mark.parametrize(["date"], to_args(VALID_DATES))
     @pytest.mark.parametrize(["props"], to_args(VALID_PROPS))
-    def test_clear_day(self, date: DateLike, props: DayPropsLike, include_tags: bool):
+    def test_clear_day(
+        self,
+        date: DateLike,
+        props: DayPropsLike,
+        include_tags: bool,
+        default_tags: Tags,
+    ):
         # Empty changeset.
         cs = ChangeSet()
 
@@ -400,7 +379,7 @@ class TestChangeSet:
         assert len(cs) == 1
 
         # Add tags for same day.
-        cs.set_tags(date, ["foo", "bar"])
+        cs.set_tags(date, default_tags)
         assert len(cs) == 2
 
         # Clear day.
@@ -415,7 +394,7 @@ class TestChangeSet:
         assert len(cs) == 1
 
         # Add tags for same day.
-        cs.set_tags(date, ["foo", "bar"])
+        cs.set_tags(date, default_tags)
         assert len(cs) == 2
 
         # Clear day.
@@ -437,7 +416,7 @@ class TestChangeSet:
     @pytest.mark.parametrize(
         ["include_meta"], [(True,), (False,)], ids=["include_meta", "exclude_meta"]
     )
-    def test_clear(self, include_meta: bool):
+    def test_clear(self, include_meta: bool, default_tags):
         cs = ChangeSet()
         cs.add_day("2020-01-01", {"type": "holiday", "name": "Holiday"})
         cs.add_day(
@@ -457,16 +436,16 @@ class TestChangeSet:
         cs.remove_day("2020-01-08")
         cs.remove_day("2020-01-09")
         cs.remove_day("2020-01-10")
-        cs.set_tags("2020-01-01", ["foo", "bar"])
-        cs.set_tags("2020-01-02", ["foo", "bar"])
-        cs.set_tags("2020-01-03", ["foo", "bar"])
-        cs.set_tags("2020-01-04", ["foo", "bar"])
-        cs.set_tags("2020-01-05", ["foo", "bar"])
-        cs.set_tags("2020-01-06", ["foo", "bar"])
-        cs.set_tags("2020-01-07", ["foo", "bar"])
-        cs.set_tags("2020-01-08", ["foo", "bar"])
-        cs.set_tags("2020-01-09", ["foo", "bar"])
-        cs.set_tags("2020-01-10", ["foo", "bar"])
+        cs.set_tags("2020-01-01", default_tags)
+        cs.set_tags("2020-01-02", default_tags)
+        cs.set_tags("2020-01-03", default_tags)
+        cs.set_tags("2020-01-04", default_tags)
+        cs.set_tags("2020-01-05", default_tags)
+        cs.set_tags("2020-01-06", default_tags)
+        cs.set_tags("2020-01-07", default_tags)
+        cs.set_tags("2020-01-08", default_tags)
+        cs.set_tags("2020-01-09", default_tags)
+        cs.set_tags("2020-01-10", default_tags)
 
         assert len(cs) == 20
 
@@ -587,8 +566,8 @@ class TestChangeSet:
             ),
             ({"remove": ["2020-01-01"]}, ChangeSet().remove_day("2020-01-01")),
             (
-                {"meta": {"2020-01-01": {"tags": ["foo", "bar"]}}},
-                ChangeSet().set_tags("2020-01-01", ["foo", "bar"]),
+                {"meta": {"2020-01-01": {"tags": ["ns:foo", "ns:bar"]}}},
+                ChangeSet().set_tags("2020-01-01", DEFAULT_TAGS),
             ),
             (
                 {
@@ -621,58 +600,58 @@ class TestChangeSet:
                         "2020-05-02",
                     ],
                     "meta": {
-                        "2020-01-01": {"tags": ["foo", "bar"]},
-                        "2020-02-01": {"tags": ["foo", "bar"]},
+                        "2020-01-01": {"tags": ["ns:foo", "ns:bar"]},
+                        "2020-02-01": {"tags": ["ns:foo", "ns:bar"]},
                         "2020-03-01": {
-                            "tags": ["foo", "bar"],
+                            "tags": ["ns:foo", "ns:bar"],
                             "comment": "This is a comment.",
                         },
                         "2020-04-01": {
-                            "tags": ["foo", "bar"],
+                            "tags": ["ns:foo", "ns:bar"],
                             "comment": "This is a comment.",
                         },
                         "2020-05-01": {"comment": "This is a comment."},
                         "2020-01-02": {"comment": "This is a comment."},
-                        "2020-02-02": {"tags": ["foo", "bar"]},
-                        "2020-03-02": {"tags": ["foo", "bar"]},
-                        "2020-04-02": {"tags": ["foo", "bar"]},
-                        "2020-05-02": {"tags": ["foo", "bar"]},
+                        "2020-02-02": {"tags": ["ns:foo", "ns:bar"]},
+                        "2020-03-02": {"tags": ["ns:foo", "ns:bar"]},
+                        "2020-04-02": {"tags": ["ns:foo", "ns:bar"]},
+                        "2020-05-02": {"tags": ["ns:foo", "ns:bar"]},
                     },
                 },
                 ChangeSet()
                 .add_day("2020-01-01", {"type": "holiday", "name": "Holiday"})
-                .set_tags("2020-01-01", ["foo", "bar"])
+                .set_tags("2020-01-01", DEFAULT_TAGS)
                 .remove_day("2020-01-02")
                 .set_comment("2020-01-02", "This is a comment.")
                 .add_day(
                     "2020-02-01",
                     {"type": "special_open", "name": "Special Open", "time": "10:00"},
                 )
-                .set_tags("2020-02-01", ["foo", "bar"])
+                .set_tags("2020-02-01", DEFAULT_TAGS)
                 .remove_day("2020-02-02")
-                .set_tags("2020-02-02", ["foo", "bar"])
+                .set_tags("2020-02-02", DEFAULT_TAGS)
                 .add_day(
                     "2020-03-01",
                     {"type": "special_close", "name": "Special Close", "time": "16:00"},
                 )
-                .set_tags("2020-03-01", ["foo", "bar"])
+                .set_tags("2020-03-01", DEFAULT_TAGS)
                 .set_comment("2020-03-01", "This is a comment.")
                 .remove_day("2020-03-02")
-                .set_tags("2020-03-02", ["foo", "bar"])
+                .set_tags("2020-03-02", DEFAULT_TAGS)
                 .add_day(
                     "2020-04-01", {"type": "monthly_expiry", "name": "Monthly Expiry"}
                 )
-                .set_tags("2020-04-01", ["foo", "bar"])
+                .set_tags("2020-04-01", DEFAULT_TAGS)
                 .set_comment("2020-04-01", "This is a comment.")
                 .remove_day("2020-04-02")
-                .set_tags("2020-04-02", ["foo", "bar"])
+                .set_tags("2020-04-02", DEFAULT_TAGS)
                 .add_day(
                     "2020-05-01",
                     {"type": "quarterly_expiry", "name": "Quarterly Expiry"},
                 )
                 .set_comment("2020-05-01", "This is a comment.")
                 .remove_day("2020-05-02")
-                .set_tags("2020-05-02", ["foo", "bar"]),
+                .set_tags("2020-05-02", DEFAULT_TAGS),
             ),
         ],
     )
@@ -898,11 +877,11 @@ class TestChangeSet:
                 "2020-05-02",
             ],
             meta={
-                "2020-01-03": {"tags": ["foo", "bar"]},
-                "2020-02-03": {"tags": ["foo", "bar"]},
-                "2020-03-03": {"tags": ["foo", "bar"]},
-                "2020-04-03": {"tags": ["foo", "bar"]},
-                "2020-05-03": {"tags": ["foo", "bar"]},
+                "2020-01-03": {"tags": ["ns:foo", "ns:bar"]},
+                "2020-02-03": {"tags": ["ns:foo", "ns:bar"]},
+                "2020-03-03": {"tags": ["ns:foo", "ns:bar"]},
+                "2020-04-03": {"tags": ["ns:foo", "ns:bar"]},
+                "2020-05-03": {"tags": ["ns:foo", "ns:bar"]},
                 "2020-01-04": {"comment": "This is a comment."},
                 "2020-02-04": {"comment": "This is a comment."},
                 "2020-03-04": {"comment": "This is a comment."},
