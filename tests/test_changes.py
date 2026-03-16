@@ -19,14 +19,14 @@ from src.exchange_calendars_extensions.api.changes import (
 )
 
 # Validator for TimestampLike.
-TimeStampValidator = TypeAdapter(DateLike, config=dict(arbitrary_types_allowed=True))
+TimeStampValidator = TypeAdapter(DateLike)
 
 # Validator for DayPropsLike.
-DayPropsValidator = TypeAdapter(DayPropsLike, config=dict(arbitrary_types_allowed=True))
+DayPropsValidator = TypeAdapter(DayPropsLike)
 
 # Validator for DayMeta.
 DayMetaValidator = TypeAdapter(
-    Union[DayMeta, None], config=dict(arbitrary_types_allowed=True)
+    Union[DayMeta, None]
 )
 
 
