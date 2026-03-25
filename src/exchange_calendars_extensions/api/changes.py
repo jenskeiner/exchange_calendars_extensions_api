@@ -8,15 +8,11 @@ from typing import Annotated, Concatenate, Literal, Union
 
 import pandas as pd
 from pydantic import (
-    AfterValidator,
     BaseModel,
-    BeforeValidator,
-    ConfigDict,
     Field,
     GetCoreSchemaHandler,
     RootModel,
     TypeAdapter,
-    WithJsonSchema,
     model_validator,
     validate_call,
 )
@@ -80,6 +76,7 @@ class TimestampLike(pd.Timestamp):
         except (ValueError, TypeError) as e:
             raise ValueError(f"Cannot convert {v!r} to valid timestamp") from e
 
+
 # A type alias for TimestampLike that normalizes the timestamp to a date-like value.
 #
 # Date-like means that the timestamp is timezone-naive and normalized to the date boundary, i.e. midnight of the day it
@@ -114,6 +111,7 @@ class DateLike(TimestampLike):
         # Reuse Timestamp validation then normalize
         ts = TimestampLike._validate(v)
         return cls(ts.tz_localize(None).normalize())
+
 
 class AbstractDayProps(BaseModel, validate_assignment=True, extra="forbid"):
     """
@@ -179,7 +177,10 @@ class TimeLike(dt.time):
                 except ValueError:
                     pass
 
-        raise ValueError(f"Cannot convert {v!r} to Time. Expected format 'HH:MM' or 'HH:MM:SS'.")
+        raise ValueError(
+            f"Cannot convert {v!r} to Time. Expected format 'HH:MM' or 'HH:MM:SS'."
+        )
+
 
 class DayPropsWithTime(AbstractDayProps):
     """
@@ -318,9 +319,7 @@ def _with_meta(
     return wrapper
 
 
-class ChangeSet(
-    BaseModel, validate_assignment=True, extra="forbid"
-):
+class ChangeSet(BaseModel, validate_assignment=True, extra="forbid"):
     """
     Represents a modification to an existing exchange calendar.
 
