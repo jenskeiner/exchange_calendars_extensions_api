@@ -71,3 +71,6 @@ only-include = ["src/exchange_calendars_extensions"]
 [tool.pytest.ini_options]
 addopts = "--cov=exchange_calendars_extensions.api --cov-report=term-missing"
 testpaths = ["tests"]
+
+[tool.uv]
+exclude-newer = "10 days"
